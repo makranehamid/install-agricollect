@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AgriCollect V2.2</title>
+
+    <!-- Libraries Locales -->
+    <script src="./lib/react.production.min.js"></script>
+    <script src="./lib/react-dom.production.min.js"></script>
+    <script src="./lib/babel.min.js"></script>
+    <script src="./lib/tailwindcss.js"></script>
+
+    <!-- Leaflet Local -->
+    <link rel="stylesheet" href="./lib/leaflet.css" />
+    <script src="./lib/leaflet.js"></script>
+
+    <script>
+        tailwind.config = {
+            content: ['./index.html'],
+            theme: {
+                extend: {
+                    colors: {
+                        agri: {
+                            50: '#f2fcf5', 100: '#e1f8e8', 200: '#c3ecd0', 300: '#94dab0', 400: '#5cbf8a', 500: '#38a370', 600: '#288258', 700: '#226848', 800: '#1d523b', 900: '#184432'
+                        }
+                    },
+                    animation: {
+                        'in': 'fadeIn 0.3s ease-out forwards',
+                        'spin-slow': 'spin 3s linear infinite',
+                    },
+                    keyframes: {
+                        fadeIn: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
+            user-select: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        ::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+
+        input,
+        textarea,
+        select {
+            font-size: 16px !important;
+        }
+
+        /* Map Styles - Force Height */
+        #map-container {
+            width: 100%;
+            height: 100%;
+            min-height: 300px;
+            background-color: #e5e7eb;
+            /* Gris si pas de tuile */
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body class="bg-agri-50 text-gray-900">
+    <header class="bg-agri-600 text-white p-4 shadow-lg sticky top-0 z-10">
+        <h1 class="text-xl font-bold">AgriCollect V2.2 (Esri)</h1>
+        <p class="text-xs opacity-80 mt-1">Développé par MAKRANE Hamid</p>
+    </header>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+        // --- ICONS ---
+        const Icon = ({ path, className, size = 24, color = "currentColor" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d={path} />
+            </svg>
+        );
+
+        const ICONS = {
+            User: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
+            Sprout: "M7 20h10 M10 20c5.5-2.5.8-6.4 3-10 1.7-2.8 5-4 5-4V4h-1v2s-4.2.4-6 6c-1.8-1.5-3.3-3.5-6-6v4c2.8 2.5 4.2 4.6 6 6 .8 2.3-2.5 6.2-7 8",
+            Camera: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6",
+            Send: "m22 2-7 20-4-9-9-4Z M22 2 11 13",
+            Database: "M3 5V19A9 3 0 0 0 21 19V5 M3 5A9 9 0 0 1 21 5 M3 12A9 9 0 0 0 21 12",
+            Settings: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6",
+            Wifi: "M5 12.55a11 11 0 0 1 14.08 0 M1.42 9a16 16 0 0 1 21.16 0 M8.53 16.11a6 6 0 0 1 6.95 0 M12 20h.01",
+            WifiOff: "M2 2l20 20 M8.5 16a6 6 0 0 1 6 4.6 M5 12.5a11 11 0 0 1 8.8-3.08 M1.42 9a16 16 0 0 1 4.7-2.88",
+            MapPin: "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z M12 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6",
+            Navigation: "m3 11 19-9-9 19-2-8-8-2Z",
+            CheckCircle2: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M9 12l2 2 4-4",
+            AlertTriangle: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01",
+            RefreshCw: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M3 21v-5h5",
+            X: "M18 6 6 18 M6 6 18 18",
+            Flower2: "M12 5a3 3 0 1 1 3 3m-3-3a3 3 0 1 0-3 3m3-3v1m0 0a3 3 0 1 0 3 3m-3-3a3 3 0 1 1-3 3m3-3v2m0 0a3 3 0 1 0 3 3m-3-3a3 3 0 1 1-3 3m3-3v3.4c1.8-1 4.3-.9 5.5.9 1.4 2 .4 5-1.5 5.5C12 22 12 22 12 22s0 0-3-1.6c-1.9-.5-2.9-3-1.5-5.5 1.2-1.8 3.7-1.9 5.5-.9",
+            Wheat: "M2 22 16 8 M3.06 14.5a3 3 0 1 1 4.24-4.25L9 8.5 M10.5 17.5a3 3 0 1 1 4.24-4.25L12.5 11.5 M6.5 11.5a3 3 0 1 1 4.24-4.25L8.5 5.5 M14.5 21.5a3 3 0 1 1 4.24-4.25L16.5 15.5 M10.5 8.5a3 3 0 1 1 4.24-4.25L12.5 2.5",
+            Leaf: "M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12",
+            Trash: "M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+            Undo: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+            Layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+        };
+        const UserIcon = (props) => <Icon path={ICONS.User} {...props} />;
+        const SproutIcon = (props) => <Icon path={ICONS.Sprout} {...props} />;
+        const CameraIcon = (props) => <Icon path={ICONS.Camera} {...props} />;
+        const SendIcon = (props) => <Icon path={ICONS.Send} {...props} />;
+        const DatabaseIcon = (props) => <Icon path={ICONS.Database} {...props} />;
+        const SettingsIcon = (props) => <Icon path={ICONS.Settings} {...props} />;
+        const WifiIcon = (props) => <Icon path={ICONS.Wifi} {...props} />;
+        const WifiOffIcon = (props) => <Icon path={ICONS.WifiOff} {...props} />;
+        const MapPinIcon = (props) => <Icon path={ICONS.MapPin} {...props} />;
+        const NavigationIcon = (props) => <Icon path={ICONS.Navigation} {...props} />;
+        const CheckCircle2Icon = (props) => <Icon path={ICONS.CheckCircle2} {...props} />;
+        const AlertTriangleIcon = (props) => <Icon path={ICONS.AlertTriangle} {...props} />;
+        const RefreshCwIcon = (props) => <Icon path={ICONS.RefreshCw} {...props} />;
+        const XIcon = (props) => <Icon path={ICONS.X} {...props} />;
+        const Flower2Icon = (props) => <Icon path={ICONS.Flower2} {...props} />;
+        const WheatIcon = (props) => <Icon path={ICONS.Wheat} {...props} />;
+        const LeafIcon = (props) => <Icon path={ICONS.Leaf} {...props} />;
+        const TrashIcon = (props) => <Icon path={ICONS.Trash} {...props} />;
+        const LayersIcon = (props) => <Icon path={ICONS.Layers} {...props} />;
+
+        const FigIcon = ({ className, size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" className={className}>
+                <path d="M12 21.5C16.1421 21.5 19 18.5 19 14.5C19 11.5 16.5 9 13.5 8L12 2L10.5 8C7.5 9 5 11.5 5 14.5C5 18.5 7.85786 21.5 12 21.5Z" fill="#9C27B0" stroke="#4A148C" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M12 8V2" stroke="#33691E" strokeWidth="2" strokeLinecap="round" />
+                <path d="M12 6C15 6 18 3 21 4.5C19 6.5 15 7.5 12 6Z" fill="#7CB342" stroke="#33691E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+
+        // --- MATH UTILS ---
+        const R = 6371e3;
+        function toRad(deg) { return deg * Math.PI / 180; }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const φ1 = toRad(lat1), φ2 = toRad(lat2);
+            const Δφ = toRad(lat2 - lat1);
+            const Δλ = toRad(lon2 - lon1);
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function calculatePolygonArea(coords) {
+            if (coords.length < 3) return 0;
+            const centerLat = coords[0].lat;
+            const metersPerLat = 111132.954 - 559.822 * Math.cos(2 * toRad(centerLat));
+            const metersPerLon = 111132.954 * Math.cos(toRad(centerLat));
+
+            let areaM2 = 0;
+            for (let i = 0; i < coords.length; i++) {
+                const j = (i + 1) % coords.length;
+                const x1 = coords[i].lng * metersPerLon;
+                const y1 = coords[i].lat * metersPerLat;
+                const x2 = coords[j].lng * metersPerLon;
+                const y2 = coords[j].lat * metersPerLat;
+                areaM2 += (x1 * y2) - (y1 * x2);
+            }
+            return Math.abs(areaM2 / 2) / 10000; // Return in Hectares
+        }
+
+        function calculateCentroid(coords) {
+            if (!coords.length) return null;
+            let lat = 0, lng = 0;
+            coords.forEach(c => { lat += c.lat; lng += c.lng; });
+            return { lat: lat / coords.length, lng: lng / coords.length };
+        }
+
+        function distToSegmentSquared(p, v, w) {
+            const l2 = ((v.lat - w.lat) ** 2) + ((v.lng - w.lng) ** 2);
+            if (l2 === 0) return ((p.lat - v.lat) ** 2) + ((p.lng - v.lng) ** 2);
+            let t = ((p.lat - v.lat) * (w.lat - v.lat) + (p.lng - v.lng) * (w.lng - v.lng)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const distSq = ((p.lat - (v.lat + t * (w.lat - v.lat))) ** 2) +
+                ((p.lng - (v.lng + t * (w.lng - v.lng))) ** 2);
+            return distSq;
+        }
+
+        function minDistanceToPolygon(point, polygon) {
+            // Converts roughly to meters for check
+            const centerLat = point.lat;
+            const mPerDeg = 111132.954;
+            let minDistSqDeg = Infinity;
+
+            for (let i = 0; i < polygon.length; i++) {
+                const p1 = polygon[i];
+                const p2 = polygon[(i + 1) % polygon.length];
+                minDistSqDeg = Math.min(minDistSqDeg, distToSegmentSquared(point, p1, p2));
+            }
+            return Math.sqrt(minDistSqDeg) * mPerDeg; // Approx meters
+        }
+
+        // --- COMPONENTS ---
+        const RenderIcon = ({ iconName, className }) => {
+            const props = { className };
+            if (iconName === 'flower') return <Flower2Icon {...props} />;
+            if (iconName === 'fig_fruit') return <FigIcon {...props} />;
+            // if (iconName === 'wheat') return <WheatIcon {...props} />; // Replaced by emoji 🌾
+            // if (iconName === 'leaf') return <LeafIcon {...props} />;   // Replaced by emoji 🌿/🍀
+            if (iconName === 'sprout') return <SproutIcon {...props} />;
+            const emojiMap = {
+                'olive': '🫒', 'almond': '🌰', 'carrot': '🥕', 'corn': '🌽',
+                'garlic': '🧄', 'eggplant': '🍆', 'broccoli': '🥦', 'cabbage': '🥬',
+                'squash': '🥒', 'bean': '🫘', 'melon': '🍈', 'turnip': '🥔',
+                'onion': '🧅', 'watermelon': '🍉', 'pepper': '🌶️', 'potato': '🥔',
+                'tomato': '🍅', 'pea': '🫛', 'lentil': '🫘', 'chickpea': '🫘',
+                'wheat_ear': '🌾', 'clover': '🍀', 'herb': '🌿', 'grass': '🌱'
+            };
+            if (emojiMap[iconName]) return <span className={`text-xl leading-none flex items-center justify-center ${className}`}>{emojiMap[iconName]}</span>;
+            return <SproutIcon {...props} />;
+        };
+
+        const MapModal = ({ isOpen, onClose, userLocation, onComplete }) => {
+            const mapRef = useRef(null);
+            const [points, setPoints] = useState([]);
+            const [mapInstance, setMapInstance] = useState(null);
+            const [polyLayer, setPolyLayer] = useState(null);
+            const [layerType, setLayerType] = useState('esri'); // 'esri' | 'osm'
+
+            // Force sizing (Fix for empty map bug in modals)
+            useEffect(() => {
+                if (isOpen && mapInstance) {
+                    setTimeout(() => { mapInstance.invalidateSize(); }, 300);
+                    setTimeout(() => { mapInstance.invalidateSize(); }, 1000); //Double check
+                }
+            }, [isOpen, mapInstance]);
+
+            useEffect(() => {
+                if (isOpen && !mapInstance && document.getElementById('map-container')) {
+                    const map = L.map('map-container').setView([userLocation.latitude || 35.17, userLocation.longitude || -5.27], 18);
+
+                    // LAYER 1: Esri World Imagery (Satellite très fiable, HTTPS)
+                    const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                        attribution: 'Tiles &copy; Esri',
+                        maxZoom: 19
+                    }).addTo(map);
+
+                    // LAYER 2: OpenStreetMap (Plan)
+                    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    });
+
+                    // Store layers
+                    map.layers = { esriSat, osm };
+                    map.currentLayer = esriSat;
+
+                    // User Marker
+                    if (userLocation.latitude) {
+                        L.circleMarker([userLocation.latitude, userLocation.longitude], {
+                            radius: 8, color: 'blue', fillColor: '#2196F3', fillOpacity: 0.8
+                        }).addTo(map).bindPopup("Vous êtes ici");
+                    }
+
+                    map.on('click', (e) => {
+                        setPoints(prev => [...prev, { lat: e.latlng.lat, lng: e.latlng.lng }]);
+                    });
+
+                    setMapInstance(map);
+                }
+            }, [isOpen]);
+
+            const switchLayer = () => {
+                if (!mapInstance) return;
+                if (layerType === 'esri') {
+                    mapInstance.removeLayer(mapInstance.layers.esriSat);
+                    mapInstance.addLayer(mapInstance.layers.osm);
+                    setLayerType('osm');
+                } else {
+                    mapInstance.removeLayer(mapInstance.layers.osm);
+                    mapInstance.addLayer(mapInstance.layers.esriSat);
+                    setLayerType('esri');
+                }
+            };
+
+            // Redraw Polygon
+            useEffect(() => {
+                if (!mapInstance) return;
+                if (polyLayer) mapInstance.removeLayer(polyLayer);
+
+                if (points.length > 0) {
+                    const latlngs = points.map(p => [p.lat, p.lng]);
+                    const poly = L.polygon(latlngs, { color: '#ffeb3b', weight: 4, fillOpacity: 0.4, fillColor: '#ffeb3b' }).addTo(mapInstance);
+                    setPolyLayer(poly);
+
+                    // Corners
+                    points.forEach(p => {
+                        L.circleMarker([p.lat, p.lng], { radius: 4, color: 'white', fillColor: 'red', fillOpacity: 1 }).addTo(mapInstance);
+                    });
+                }
+            }, [points, mapInstance]);
+
+            const handleClear = () => {
+                setPoints([]);
+                if (mapInstance) {
+                    mapInstance.eachLayer((layer) => {
+                        if (layer instanceof L.Polygon || (layer instanceof L.CircleMarker && layer.options.fillColor === 'red')) {
+                            mapInstance.removeLayer(layer);
+                        }
+                    });
+                }
+            };
+
+            const handleUndo = () => {
+                setPoints(prev => {
+                    const newPoints = prev.slice(0, -1);
+                    if (mapInstance) {
+                        mapInstance.eachLayer((layer) => {
+                            if (layer instanceof L.Polygon || (layer instanceof L.CircleMarker && layer.options.fillColor === 'red')) {
+                                mapInstance.removeLayer(layer);
+                            }
+                        });
+                    }
+                    return newPoints;
+                });
+            };
+
+            const handleValidate = () => {
+                if (points.length < 3) return alert("Il faut au moins 3 points pour une parcelle.");
+                const area = calculatePolygonArea(points);
+                const centroid = calculateCentroid(points);
+                onComplete({ points, area, centroid });
+                // onClose(); // ❌ REMOVED: Parent decides when to close (only if distance is OK)
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-[60] bg-black/50 flex flex-col items-center justify-center p-4">
+                    <div className="bg-white w-full h-full max-w-lg rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+                        <div className="bg-agri-600 text-white p-3 flex justify-between items-center">
+                            <h3 className="font-bold">Délimiter la parcelle</h3>
+                            <div className="flex gap-3">
+                                <button onClick={switchLayer} className="bg-white/20 px-3 py-1 rounded hover:bg-white/30 text-xs font-bold" title="Changer de carte">
+                                    {layerType === 'esri' ? 'Vue Plan' : 'Vue Satellite'}
+                                </button>
+                                <button onClick={onClose}><XIcon className="w-6 h-6" /></button>
+                            </div>
+                        </div>
+                        <div className="relative flex-1 bg-gray-200">
+                            <div id="map-container"></div>
+
+                            <div className="absolute top-2 left-2 right-12 space-y-2 pointer-events-none">
+                                {!navigator.onLine && <div className="bg-red-500 text-white text-xs p-2 rounded shadow opacity-90 font-bold">⚠️ HORS LIGNE: Chargez la zone avec internet AVANT d'aller sur le terrain.</div>}
+                                <div className="bg-white/90 backdrop-blur text-xs p-2 rounded shadow text-gray-700">
+                                    Le point BLEU = VOUS. Cliquez sur les coins du champ.
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-3 bg-white border-t space-y-2">
+                            <div className="flex justify-between text-sm text-gray-600 font-bold px-1">
+                                <span>Points: {points.length}</span>
+                                <span>Surf: {calculatePolygonArea(points).toFixed(2)} Ha</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={handleUndo} className="p-3 bg-gray-200 rounded-xl flex justify-center text-gray-700 font-bold"><Icon path={ICONS.Navigation} className="rotate-180 w-5 h-5" /></button>
+                                <button onClick={handleClear} className="p-3 bg-red-100 text-red-600 rounded-xl flex justify-center font-bold"><TrashIcon className="w-5 h-5" /></button>
+                                <button onClick={handleValidate} className="p-3 bg-gradient-to-r from-agri-600 to-agri-500 text-white font-bold rounded-xl flex justify-center items-center gap-1 shadow-lg active:scale-95">
+                                    <CheckCircle2Icon className="w-5 h-5" /> VALIDER
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const LocationCard = ({ location, setLocation, area, setArea, setPolygonData, polygonData }) => {
+            const [showMap, setShowMap] = useState(false);
+
+            const handleGetLocation = () => {
+                setLocation(prev => ({ ...prev, loading: true, error: null }));
+                if (!navigator.geolocation) {
+                    setLocation(prev => ({ ...prev, loading: false, error: "GPS non supporté" }));
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => setLocation({
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        loading: false,
+                        error: null
+                    }),
+                    (err) => {
+                        let msg = "Erreur GPS";
+                        if (err.code === 1) msg = "Autorisation GPS refusée.";
+                        else if (err.code === 2) msg = "Position indisponible.";
+                        setLocation(prev => ({ ...prev, loading: false, error: msg }));
+                    },
+                    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+                );
+            };
+
+            const handleMapComplete = (data) => {
+                if (location.latitude) {
+                    const dist = minDistanceToPolygon({ lat: location.latitude, lng: location.longitude }, data.points);
+
+                    // STRICT CHECK: Block validation if > 100m
+                    if (dist > 100) {
+                        alert(`⚠️ TROP LOIN (${Math.round(dist)}m) !\n\nVous êtes à plus de 100m de la parcelle.\nRapprochez-vous physiquement de la parcelle pour pouvoir valider.\n(Limite autorisée : 100m)`);
+                        return; // ⛔ STOP: Do not save, do not close modal. User must move or redraw.
+                    }
+                }
+                setPolygonData(data);
+                setArea(data.area.toFixed(2));
+                setShowMap(false); // Close ONLY if valid
+            };
+
+            return (
+                <div className={`bg-white rounded-2xl shadow-sm border p-5 space-y-4 ${location.error ? 'border-red-200' : 'border-gray-100'}`}>
+                    <div className="flex items-center space-x-2 text-agri-700 border-b border-gray-100 pb-2">
+                        <MapPinIcon className="w-5 h-5" />
+                        <h2 className="text-lg font-bold">Localisation <span className="text-red-500">*</span></h2>
+                    </div>
+
+                    {/* 1. GPS Button */}
+                    <button
+                        onClick={handleGetLocation}
+                        disabled={location.loading}
+                        className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 text-white font-semibold transition-all shadow-md active:scale-95 ${location.loading ? 'bg-gray-400' : location.latitude ? 'bg-green-600' : 'bg-agri-600'}`}
+                    >
+                        {location.loading ? <RefreshCwIcon className="animate-spin-slow w-5 h-5" /> :
+                            location.latitude ? <CheckCircle2Icon className="w-5 h-5" /> :
+                                <NavigationIcon className="w-5 h-5" />}
+                        <span>{location.loading ? 'Recherche GPS...' : location.latitude ? '1. GPS Actualisé' : '1. Capturer ma position'}</span>
+                    </button>
+
+                    {location.latitude && (
+                        <div className="text-center text-xs text-green-700 font-mono">
+                            {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)} (±{Math.round(location.accuracy)}m)
+                        </div>
+                    )}
+
+                    {/* 2. Map Button */}
+                    <button
+                        onClick={() => {
+                            if (!location.latitude) return alert("Veuillez d'abord capturer votre position GPS (Etape 1).");
+                            setShowMap(true);
+                        }}
+                        className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 font-bold transition-all border-2 ${polygonData ? 'border-agri-500 text-agri-700 bg-agri-50' : 'border-dashed border-gray-300 text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <Icon path={ICONS.MapPin} className="w-5 h-5" />
+                        <span>{polygonData ? 'Modifier la Limite' : '2. Dessiner les Limites'}</span>
+                    </button>
+
+                    {polygonData && (
+                        <div className="text-center text-xs bg-agri-50 p-2 rounded border border-agri-100 animate-in">
+                            ✅ Parcelle définie ({polygonData.points.length} points)
+                        </div>
+                    )}
+
+                    {/* Manual Area Override */}
+                    <div>
+                        <label className="text-sm font-semibold text-agri-800 mb-1 block">Superficie (Hectares) - Auto</label>
+                        <input type="number" step="0.01" value={area} onChange={e => setArea(e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-agri-500 outline-none font-bold text-lg text-center" />
+                    </div>
+
+                    <MapModal isOpen={showMap} onClose={() => setShowMap(false)} userLocation={location} onComplete={handleMapComplete} />
+                </div>
+            );
+        };
+
+        const App = () => {
+            const NEW_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKqb5_sUmBOJYW5SNJypywFQ9_Ij4hxtm7jBTwRULX1jrpf7jpeX-j1ndjgYT8137xKA/exec";
+            const STORAGE_KEY = 'agri_data_v32';
+            const SETTINGS_KEY = 'agri_settings_v32';
+            const CROPS_LIST = [
+                { id: 'olivier', name: 'Olivier', icon: 'olive' },
+                { id: 'amandier', name: 'Amandier', icon: 'almond' },
+                { id: 'figuier', name: 'Figuier', icon: 'fig_fruit' },
+                { id: 'cannabis', name: 'Cannabis', icon: 'flower' },
+                { id: 'avoine', name: 'Avoine vert', icon: 'wheat_ear' },
+                { id: 'bersim', name: 'Bersim', icon: 'clover' },
+                { id: 'feverole', name: 'Féverole', icon: 'bean' },
+                { id: 'luzerne', name: 'Luzerne', icon: 'herb' },
+                { id: 'mais', name: 'Mais fourrager', icon: 'corn' },
+                { id: 'melange', name: 'Mélange fourrager', icon: 'grass' },
+                { id: 'orge', name: 'Orge fourrager', icon: 'wheat_ear' },
+                { id: 'ail', name: 'Ail', icon: 'garlic' },
+                { id: 'aubergine', name: 'Aubergine', icon: 'eggplant' },
+                { id: 'carotte', name: 'Carotte', icon: 'carrot' },
+                { id: 'choux_fleur', name: 'Choux fleur', icon: 'broccoli' },
+                { id: 'choux_pomme', name: 'Choux pomme', icon: 'cabbage' },
+                { id: 'courge', name: 'Courge courgette', icon: 'squash' },
+                { id: 'feve_verte', name: 'Fève verte', icon: 'bean' },
+                { id: 'melon', name: 'Melon', icon: 'melon' },
+                { id: 'navet', name: 'Navet', icon: 'turnip' },
+                { id: 'oignon', name: 'Oignon', icon: 'onion' },
+                { id: 'pasteque', name: 'Pastèque', icon: 'watermelon' },
+                { id: 'petit_pois', name: 'Petit Pois vert', icon: 'pea' },
+                { id: 'piment', name: 'Piment poivron', icon: 'pepper' },
+                { id: 'pomme_terre', name: 'Pomme de terre', icon: 'potato' },
+                { id: 'tomate', name: 'Tomate', icon: 'tomato' },
+                { id: 'ble_dur', name: 'BLE DUR', icon: 'wheat_ear' },
+                { id: 'ble_tendre', name: 'BLE TENDRE', icon: 'wheat_ear' },
+                { id: 'mais_grain', name: 'Mais', icon: 'corn' },
+                { id: 'orge_grain', name: 'ORGE', icon: 'wheat_ear' },
+                { id: 'feve_sec', name: 'Fève', icon: 'bean' },
+                { id: 'lentille', name: 'Lentille', icon: 'lentil' },
+                { id: 'pois_chiche', name: 'Pois chiche', icon: 'chickpea' }
+            ];
+
+            const getStoredRecords = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } };
+            const getSettings = () => { try { return { collectorName: JSON.parse(localStorage.getItem(SETTINGS_KEY))?.collectorName || '', googleScriptUrl: NEW_SCRIPT_URL }; } catch { return { collectorName: '', googleScriptUrl: NEW_SCRIPT_URL }; } };
+            const saveSettings = (s) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+            const syncToGoogleSheets = async (record, url) => { try { await fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(record) }); return true; } catch (e) { return false; } };
+            const compressImage = (file) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader(); reader.readAsDataURL(file);
+                    reader.onload = (event) => { const img = new Image(); img.src = event.target.result; img.onload = () => { const canvas = document.createElement('canvas'); const MAX_WIDTH = 400; const scaleSize = MAX_WIDTH / img.width; canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', 0.4)); }; img.onerror = reject; }; reader.onerror = reject;
+                });
+            };
+
+            const [settings, setSettingsState] = useState(getSettings());
+            const [showSettings, setShowSettings] = useState(!settings.collectorName);
+            const [records, setRecords] = useState(getStoredRecords());
+            const [collectionDate, setCollectionDate] = useState(new Date().toISOString().split('T')[0]);
+            const [location, setLocation] = useState({ latitude: null, longitude: null, accuracy: null, loading: false, error: null });
+            const [polygonData, setPolygonData] = useState(null);
+            const [area, setArea] = useState('');
+            const [selectedCrop, setSelectedCrop] = useState('');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [notes, setNotes] = useState('');
+            const [photo, setPhoto] = useState(null);
+            const [isCompressing, setIsCompressing] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [notification, setNotification] = useState(null);
+            const isSyncingRef = useRef(false);
+
+            useEffect(() => {
+                const updateOnline = () => setIsOnline(navigator.onLine);
+                window.addEventListener('online', updateOnline); window.addEventListener('offline', updateOnline);
+                return () => { window.removeEventListener('online', updateOnline); window.removeEventListener('offline', updateOnline); };
+            }, []);
+
+            useEffect(() => {
+                const runSync = async () => {
+                    if (!navigator.onLine || isSyncingRef.current) return;
+                    isSyncingRef.current = true;
+                    let currentRecords = getStoredRecords();
+                    let unsynced = currentRecords.filter(r => !r.synced);
+                    if (unsynced.length > 0) {
+                        let hasNewSyncs = false;
+                        for (let r of unsynced) {
+                            if (!navigator.onLine) break;
+                            if (await syncToGoogleSheets(r, settings.googleScriptUrl)) { r.synced = true; hasNewSyncs = true; }
+                            await new Promise(res => setTimeout(res, 500));
+                        }
+                        if (hasNewSyncs) { localStorage.setItem(STORAGE_KEY, JSON.stringify(currentRecords)); setRecords([...currentRecords]); }
+                    }
+                    isSyncingRef.current = false;
+                };
+                const interval = setInterval(runSync, 10000); runSync();
+                return () => clearInterval(interval);
+            }, [settings.googleScriptUrl]);
+
+            const filteredCrops = useMemo(() => CROPS_LIST.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())), [searchTerm]);
+            const showNotif = (type, msg) => { setNotification({ type, message: msg }); setTimeout(() => setNotification(null), 4000); };
+            const handlePhotoChange = async (e) => { if (e.target.files && e.target.files[0]) { setIsCompressing(true); try { setPhoto(await compressImage(e.target.files[0])); showNotif('success', 'Photo ok.'); } catch { showNotif('error', 'Erreur photo.'); } setIsCompressing(false); } e.target.value = null; };
+            const handleSaveSettings = () => { const name = document.getElementById('collectorNameInput').value; if (!name.trim()) return showNotif('error', 'Nom obligatoire'); const s = { collectorName: name.trim(), googleScriptUrl: NEW_SCRIPT_URL }; setSettingsState(s); saveSettings(s); setShowSettings(false); };
+            const handleSubmit = async () => {
+                if (!settings.collectorName) return showNotif('error', 'Config ?');
+                if (!selectedCrop) return showNotif('error', 'Culture ?');
+                if (!location.latitude) return showNotif('error', 'GPS ?');
+                if (!polygonData) return showNotif('error', 'Carte vide !');
+                const dist = minDistanceToPolygon({ lat: location.latitude, lng: location.longitude }, polygonData.points);
+                if (dist > 100) return showNotif('error', `Trop loin (${Math.round(dist)}m > 100m)`);
+
+                setIsSubmitting(true);
+                const now = new Date();
+                const record = {
+                    id: Date.now().toString(),
+                    timestamp: `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
+                    collectorName: settings.collectorName,
+                    collectionDate: collectionDate.split('-').reverse().join('/'),
+                    latitude: polygonData.centroid.lat,
+                    longitude: polygonData.centroid.lng,
+                    accuracy: location.accuracy,
+                    area: area,
+                    crop: selectedCrop,
+                    notes: notes,
+                    photo: photo || '',
+                    synced: false,
+                    polygon: polygonData.points
+                };
+                const updated = [record, ...getStoredRecords()];
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                setRecords(updated);
+                setIsSubmitting(false);
+                showNotif('success', 'OK !');
+                setArea(''); setSelectedCrop(''); setNotes(''); setPhoto(null); setPolygonData(null);
+                setLocation({ latitude: null, longitude: null, accuracy: null, loading: false, error: null });
+            };
+
+            if (showSettings) {
+                return (
+                    <div className="min-h-screen bg-agri-50 p-4 flex flex-col justify-center items-center">
+                        <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-md animate-in">
+                            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-agri-800"><SettingsIcon className="w-6 h-6" /> Configuration</h2>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Votre Nom</label>
+                            <input type="text" id="collectorNameInput" defaultValue={settings.collectorName} className="w-full p-3 border rounded-xl" placeholder="Nom..." />
+                            <button onClick={handleSaveSettings} className="w-full bg-agri-600 text-white font-bold py-3 rounded-xl shadow-lg mt-4">Valider</button>
+                            {records.length > 0 && <button onClick={() => setShowSettings(false)} className="w-full text-gray-500 py-2 mt-2">Annuler</button>}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen pb-10 bg-agri-50 font-sans max-w-md mx-auto shadow-xl relative">
+                    <div className="bg-agri-800 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-50 flex justify-between items-center">
+                        <div><h1 className="text-lg font-bold">AgriCollect</h1><p className="text-xs text-agri-200">V2.2 (Esri)</p></div>
+                        <div className="flex items-center gap-2">
+                            <div className={`px-2 py-1 rounded-full text-[10px] font-bold ${isOnline ? 'bg-green-400 text-green-900' : 'bg-gray-300 text-gray-800'}`}>{isOnline ? <WifiIcon className="w-3 h-3" /> : <WifiOffIcon className="w-3 h-3" />}</div>
+                            <button onClick={() => setShowSettings(true)} className="p-2 bg-agri-700 rounded-full"><SettingsIcon className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+
+                    <div className="px-4 -mt-4 space-y-4 relative z-10 pt-6">
+                        <div className="bg-white rounded-2xl shadow-sm p-3 border border-gray-100 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-agri-100 p-2 rounded-full text-agri-700"><UserIcon className="w-5 h-5" /></div>
+                                <div className="text-sm font-bold text-agri-900">{settings.collectorName}</div>
+                            </div>
+                            <input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className="text-sm bg-gray-100 rounded p-1" />
+                        </div>
+
+                        <LocationCard location={location} setLocation={setLocation} area={area} setArea={setArea} setPolygonData={setPolygonData} polygonData={polygonData} />
+
+                        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+                            <div className="flex items-center gap-2 text-agri-700 border-b pb-2 mb-3"><SproutIcon className="w-5 h-5" /> <span className="font-bold">Culture</span></div>
+                            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Chercher..." className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg mb-2 text-sm" />
+                            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                                {filteredCrops.map(c => (
+                                    <button key={c.id} onClick={() => setSelectedCrop(c.name)} className={`p-2 rounded-lg border text-xs font-bold flex flex-col items-center tranisition-all ${selectedCrop === c.name ? 'bg-agri-100 border-agri-600 ring-1 ring-agri-600' : 'bg-white hover:bg-gray-50'}`}>
+                                        <div className="text-agri-600 mb-1"><RenderIcon iconName={c.icon} className="w-6 h-6" /></div>
+                                        <span>{c.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+                            <div className="flex gap-3">
+                                <label className={`flex-shrink-0 w-20 h-20 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer relative ${photo ? 'bg-agri-100 border-agri-500' : 'bg-gray-50'}`}>
+                                    {isCompressing ? <RefreshCwIcon className="animate-spin" /> : photo ? <CheckCircle2Icon className="w-8 h-8 text-agri-700" /> : <CameraIcon className="text-gray-400 w-8 h-8" />}
+                                    <input type="file" accept="image/*" capture="camera" onChange={handlePhotoChange} className="hidden" />
+                                </label>
+                                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..." className="w-full p-2 bg-gray-50 border rounded-xl text-sm h-20 resize-none"></textarea>
+                            </div>
+                        </div>
+
+                        <button onClick={handleSubmit} disabled={isSubmitting} className="w-full py-4 bg-agri-700 hover:bg-agri-800 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
+                            {isSubmitting ? "Enregistrement..." : <><SendIcon className="w-5 h-5" /> {polygonData ? "ENREGISTRER" : "ENREGISTRER"}</>}
+                        </button>
+
+                        <div className="bg-gray-200 p-3 rounded-2xl flex justify-between items-center text-xs font-bold text-gray-600">
+                            <div className="flex gap-1"><DatabaseIcon className="w-4 h-4" /> {records.length} relevés</div>
+                            {records.filter(r => !r.synced).length > 0 ? <span className="text-orange-600">Sync en cours...</span> : <span className="text-green-600">Tout à jour</span>}
+                        </div>
+                    </div>
+                    {notification && <div className={`fixed bottom-5 left-4 right-4 p-4 rounded-xl shadow-2xl text-white font-bold text-center z-[100] animate-in ${notification.type === 'success' ? 'bg-agri-900' : 'bg-red-600'}`}>{notification.message}</div>}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />); 
+    </script>
+</body>
+
+</html>
