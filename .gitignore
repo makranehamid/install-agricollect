@@ -1,0 +1,24 @@
+# Android Source Code & Build System (Private)
+app/
+gradle/
+build/
+.gradle/
+.idea/
+.kotlin/
+*.gradle.kts
+gradlew
+gradlew.bat
+local.properties
+gradle.properties
+build_log.txt
+
+# Keep these visible:
+!AgriCollectChefchaouen.apk
+!Apk/
+!Logo App.jpg
+!icon.jpg
+!index.html
+!README.md
+!plateforme agricollectchefchaouen/
+!lien installation apk/
+!release/
